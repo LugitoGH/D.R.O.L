@@ -18,7 +18,8 @@ options = HandLandmarkerOptions(
 
 landmarker = HandLandmarker.create_from_options(options)
 
-cap = cv2.VideoCapture(0)
+#cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture("http://localhost:5000/video")
 frame_id = 0
 
 while cap.isOpened():

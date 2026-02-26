@@ -5,9 +5,10 @@ ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
+    libxrender1 \
+    ffmpeg \
     libsm6 \
     libxext6 \
-    libxrender-dev \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -20,4 +21,4 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-CMD ["python", "DROL/hand_landmarker.py"]
+CMD ["python", "DROL/hand_landmarker_win.py"]

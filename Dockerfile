@@ -21,4 +21,4 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-CMD ["python", "DROL/hand_landmarker_win.py"]
+CMD ["python", "DROL/registrar_sinal.py"]

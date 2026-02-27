@@ -24,7 +24,7 @@ landmarker = HandLandmarker.create_from_options(options)
 
 # Use seu stream HTTP da webcam
 cap = cv2.VideoCapture(
-    "http://10.135.10.18:5000/video",
+    "http://10.135.10.205:5000/video",
     cv2.CAP_FFMPEG
 )
 

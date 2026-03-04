@@ -4,61 +4,88 @@ import os
 import time
 import json
 import math
+import logging
 from flask import Flask, Response, request
+
+# ================== LOG CONFIG ==================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 app = Flask(__name__)
 
-# ===== MediaPipe Setup =====
+# ================== PATHS SEGUROS ==================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "hand_landmarker.task")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+SINAIS_PATH = os.path.join(DATA_DIR, "sinais.json")
+
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# ================== MEDIAPIPE ==================
 BaseOptions = mp.tasks.BaseOptions
 HandLandmarker = mp.tasks.vision.HandLandmarker
 HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 RunningMode = mp.tasks.vision.RunningMode
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "hand_landmarker.task")
+try:
+    options = HandLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=MODEL_PATH),
+        running_mode=RunningMode.VIDEO,
+        num_hands=1
+    )
+    landmarker = HandLandmarker.create_from_options(options)
+    logging.info("MediaPipe carregado com sucesso.")
+except Exception as e:
+    logging.error(f"Erro ao carregar modelo MediaPipe: {e}")
+    raise
 
-options = HandLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path=MODEL_PATH),
-    running_mode=RunningMode.VIDEO,
-    num_hands=1
-)
-
-landmarker = HandLandmarker.create_from_options(options)
-
+# ================== CAMERA ==================
 cap = cv2.VideoCapture(
-    "http://10.135.10.205:5000/video",
+    "http://10.135.10.18:5000/video",
     cv2.CAP_FFMPEG
 )
 
 if not cap.isOpened():
-    print("Erro ao abrir stream HTTP")
+    logging.error("Erro ao abrir stream HTTP")
     exit()
 
+# ================== VARIÁVEIS ==================
 frame_id = 0
 start_time = time.time()
 
-# ===== NOVAS VARIÁVEIS =====
-modo = "normal"  # normal | registrar | reconhecer
+modo = "normal"
 nome_sinal_atual = ""
 tempo_registro = 0
 sinais = []
 
-# ===== FUNÇÕES =====
+# ================== FUNÇÕES ==================
 
 def carregar_sinais():
     global sinais
     sinais = []
-    if os.path.exists("sinais.json"):
-        with open("sinais.json", "r") as f:
-            for linha in f:
-                sinais.append(json.loads(linha))
+    try:
+        if os.path.exists(SINAIS_PATH):
+            with open(SINAIS_PATH, "r", encoding="utf-8") as f:
+                for linha in f:
+                    sinais.append(json.loads(linha))
+        logging.info(f"{len(sinais)} sinais carregados.")
+    except Exception as e:
+        logging.error(f"Erro ao carregar sinais: {e}")
 
 def salvar_sinal(nome, coordenadas):
-    with open("sinais.json", "a") as f:
-        json.dump({
-            "nome": nome,
-            "landmarks": coordenadas
-        }, f)
-        f.write("\n")
+    try:
+        with open(SINAIS_PATH, "a", encoding="utf-8") as f:
+            json.dump({
+                "nome": nome,
+                "landmarks": coordenadas
+            }, f)
+            f.write("\n")
+        logging.info(f"Sinal '{nome}' salvo com sucesso.")
+        print("Sinal capturado!")
+    except Exception as e:
+        logging.error(f"Erro ao salvar sinal: {e}")
 
 def distancia(lm1, lm2):
     return math.sqrt(
@@ -69,85 +96,79 @@ def distancia(lm1, lm2):
 
 carregar_sinais()
 
-# ===== STREAM =====
+# ================== STREAM ==================
 
 def generate_frames():
     global frame_id, modo, tempo_registro
 
     while True:
-        success, frame = cap.read()
-        if not success:
-            break
+        try:
+            success, frame = cap.read()
 
-        frame = cv2.flip(frame, 1)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if not success:
+                logging.warning("Falha ao capturar frame.")
+                continue
 
-        mp_image = mp.Image(
-            image_format=mp.ImageFormat.SRGB,
-            data=rgb
-        )
+            frame = cv2.flip(frame, 1)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        frame_id += 1
-        timestamp_ms = int((time.time() - start_time) * 1000)
+            mp_image = mp.Image(
+                image_format=mp.ImageFormat.SRGB,
+                data=rgb
+            )
 
-        result = landmarker.detect_for_video(mp_image, timestamp_ms)
+            frame_id += 1
+            timestamp_ms = int(time.time() * 1000)
 
-        if result.hand_landmarks:
-            for hand in result.hand_landmarks:
+            result = landmarker.detect_for_video(mp_image, timestamp_ms)
 
-                h, w, _ = frame.shape
-                coordenadas = []
+            if result.hand_landmarks:
+                for hand in result.hand_landmarks:
 
-                for lm in hand:
-                    cx, cy = int(lm.x * w), int(lm.y * h)
-                    cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)
+                    h, w, _ = frame.shape
+                    coordenadas = []
 
-                    coordenadas.append({
-                        "x": lm.x,
-                        "y": lm.y,
-                        "z": lm.z
-                    })
+                    for lm in hand:
+                        cx, cy = int(lm.x * w), int(lm.y * h)
+                        cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)
 
-                # ===== MODO REGISTRAR =====
-                if modo == "registrar":
-                    restante = 10 - int(time.time() - tempo_registro)
+                        coordenadas.append({
+                            "x": lm.x,
+                            "y": lm.y,
+                            "z": lm.z
+                        })
 
-                    cv2.putText(frame,
-                                f"Registrando {nome_sinal_atual} em {restante}s",
-                                (20, 40),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                1,
-                                (0, 255, 255),
-                                2)
+                    # ================= REGISTRAR =================
+                    if modo == "registrar":
+                        if time.time() - tempo_registro >= 5:
+                            salvar_sinal(nome_sinal_atual, coordenadas)
+                            carregar_sinais()
+                            modo = "normal"
 
-                    if time.time() - tempo_registro >= 5:
-                        salvar_sinal(nome_sinal_atual, coordenadas)
-                        carregar_sinais()
-                        modo = "normal"
+                    # ================= RECONHECER =================
+                    if modo == "reconhecer":
+                        for sinal in sinais:
+                            soma = 0
+                            for i in range(21):
+                                soma += distancia(
+                                    sinal["landmarks"][i],
+                                    hand[i]
+                                )
+                            media = soma / 21
 
-                # ===== MODO RECONHECER =====
-                if modo == "reconhecer":
-                    for sinal in sinais:
-                        soma = 0
+                            if media < 0.05:
+                                cv2.putText(
+                                    frame,
+                                    f"Sinal: {sinal['nome']}",
+                                    (20, 40),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    1,
+                                    (0, 255, 0),
+                                    2
+                                )
 
-                        for i in range(21):
-                            soma += distancia(
-                                sinal["landmarks"][i],
-                                hand[i]
-                            )
-
-                        media = soma / 21
-
-                        if media < 0.05:
-                            cv2.putText(
-                                frame,
-                                f"Sinal: {sinal['nome']}",
-                                (20, 40),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                1,
-                                (0, 255, 0),
-                                2
-                            )
+        except Exception as e:
+            logging.error(f"Erro no loop principal: {e}")
 
         _, buffer = cv2.imencode('.jpg', frame)
         frame_bytes = buffer.tobytes()
@@ -155,7 +176,7 @@ def generate_frames():
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
-# ===== ROTAS =====
+# ================== ROTAS ==================
 
 @app.route('/')
 def video():
@@ -169,26 +190,31 @@ def registrar():
     nome = request.args.get("nome")
 
     if not nome:
-        return "Passe o nome do sinal na URL: /registrar?nome=C"
+        return "Use: /registrar?nome=A"
 
     nome_sinal_atual = nome
     tempo_registro = time.time()
     modo = "registrar"
 
+    logging.info(f"Iniciando registro do sinal '{nome}'")
     return f"Registrando sinal {nome} por 5 segundos..."
 
 @app.route('/reconhecer')
 def reconhecer():
     global modo
     modo = "reconhecer"
+    logging.info("Modo reconhecimento ativado.")
     return "Modo reconhecimento ativado!"
 
 @app.route('/parar')
 def parar():
     global modo
     modo = "normal"
+    logging.info("Modo normal ativado.")
     return "Modo normal."
 
-# ===== MAIN =====
+# ================== MAIN ==================
+
 if __name__ == "__main__":
+    logging.info("Servidor iniciado.")
     app.run(host="0.0.0.0", port=5000)

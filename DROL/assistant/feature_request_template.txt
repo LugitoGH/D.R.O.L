@@ -1,0 +1,16 @@
+# FEATURE REQUEST - DROL
+
+## Contexto Atual
+(Descrever arquitetura atual)
+
+## Problema
+(Descrever o problema)
+
+## Objetivo
+(O que deve acontecer após modificação)
+
+## Restrições
+(Docker, MediaPipe Tasks, etc.)
+
+## Resultado Esperado
+(Comportamento final claro)

@@ -8,6 +8,7 @@ import logging
 import socket
 import numpy as np
 from flask import Flask, Response, jsonify, render_template_string, request
+from gtts import gTTS
 
 # ================== LOG CONFIG ==================
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -296,10 +297,12 @@ def generate_frames():
                                 melhor_distancia = distancia_media
                                 melhor_sinal = sinal["nome"]
 
-                        logger.info("Melhor distancia: %.4f", melhor_distancia)
+                        #logger.info("Melhor distancia: %.4f", melhor_distancia)
 
                         if melhor_distancia < THRESHOLD_RECONHECIMENTO:
                             ultimo_reconhecido = melhor_sinal
+                            texto = melhor_sinal
+
                             cv2.putText(
                                 frame,
                                 f"Sinal: {melhor_sinal}",
@@ -333,135 +336,358 @@ INDEX_HTML = """
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DROL Controle</title>
-  <style>
-    :root {
-      --bg: #f4f7fb;
-      --card: #ffffff;
-      --text: #1f2937;
-      --accent: #0f766e;
-      --danger: #b91c1c;
-      --border: #d1d5db;
-    }
-    body {
-      margin: 0;
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #dbeafe, var(--bg));
-      color: var(--text);
-    }
-    .container {
-      max-width: 980px;
-      margin: 20px auto;
-      padding: 0 16px;
-    }
-    .card {
-      background: var(--card);
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      padding: 16px;
-      box-shadow: 0 8px 22px rgba(0,0,0,.06);
-    }
-    h1 { margin-top: 0; }
-    img {
-      width: 100%;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: #111;
-    }
-    .controls {
-      margin-top: 14px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .controls input, .controls button {
-      padding: 10px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      font-size: 15px;
-    }
-    .controls button {
-      cursor: pointer;
-      background: var(--accent);
-      color: white;
-      border: none;
-    }
-    .controls button.stop { background: var(--danger); }
-    #status {
-      margin-top: 12px;
-      padding: 10px;
-      border: 1px dashed var(--border);
-      border-radius: 8px;
-      background: #f9fafb;
-      white-space: pre-wrap;
-      font-family: Consolas, monospace;
-    }
-    @media (max-width: 700px) {
-      .controls { grid-template-columns: 1fr; }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="card">
-      <h1>DROL - Painel Unificado</h1>
-      <img src="/video_feed" alt="Video em tempo real" />
-      <div class="controls">
-        <input id="nomeSinal" type="text" placeholder="Nome do sinal (ex: A)" />
-        <button onclick="registrar()">Registrar sinal</button>
-        <button onclick="reconhecer()">Ativar reconhecimento</button>
-        <button class="stop" onclick="parar()">Parar</button>
-      </div>
-      <div id="status">Carregando status...</div>
-    </div>
-  </div>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DROL Controle</title>
 
-  <script>
-    async function atualizarStatus() {
-      try {
-        const res = await fetch('/status');
-        const data = await res.json();
-        document.getElementById('status').textContent =
+<style>
+:root {
+--bg:#f4f7fb;
+--card:#ffffff;
+--text:#1f2937;
+--accent:#0f766e;
+--danger:#b91c1c;
+--border:#d1d5db;
+}
+
+body{
+margin:0;
+font-family:Segoe UI,Tahoma,Verdana;
+background:linear-gradient(135deg,#dbeafe,var(--bg));
+color:var(--text);
+}
+
+.container{
+max-width:980px;
+margin:20px auto;
+padding:0 16px;
+}
+
+.card{
+background:var(--card);
+border-radius:14px;
+border:1px solid var(--border);
+padding:16px;
+box-shadow:0 8px 22px rgba(0,0,0,.06);
+}
+
+img{
+width:100%;
+border-radius:10px;
+border:1px solid var(--border);
+background:#111;
+}
+
+.controls{
+margin-top:14px;
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:10px;
+}
+
+.controls input,.controls button{
+padding:10px;
+border-radius:10px;
+border:1px solid var(--border);
+font-size:15px;
+}
+
+.controls button{
+cursor:pointer;
+background:var(--accent);
+color:white;
+border:none;
+}
+
+.controls button.stop{
+background:var(--danger);
+}
+
+#status{
+margin-top:12px;
+padding:10px;
+border:1px dashed var(--border);
+border-radius:8px;
+background:#f9fafb;
+white-space:pre-wrap;
+font-family:Consolas,monospace;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<div class="card">
+
+<h1>DROL - Painel Unificado</h1>
+
+<img src="/video_feed">
+
+<div class="controls">
+
+<input id="nomeSinal" placeholder="Nome do sinal">
+
+<button onclick="registrar()">Registrar sinal</button>
+
+<button onclick="reconhecer()">Ativar reconhecimento</button>
+
+<button class="stop" onclick="parar()">Parar</button>
+
+</div>
+
+<div id="status">Carregando status...</div>
+
+</div>
+</div>
+
+<script>
+
+// ===============================
+// VOZ DO NAVEGADOR
+// ===============================
+
+let ultimoFalado = ""
+let ultimoTempo = 0
+
+function falar(texto){
+
+const agora = Date.now()
+
+if(agora - ultimoTempo < 2000) return
+
+ultimoTempo = agora
+
+const fala = new SpeechSynthesisUtterance(texto)
+
+fala.lang = "pt-BR"
+fala.rate = 1
+fala.pitch = 1
+
+speechSynthesis.speak(fala)
+
+}
+
+// ===============================
+// STATUS
+// ===============================
+
+async function atualizarStatus(){
+
+try{
+
+const res = await fetch('/status')
+const data = await res.json()
+
+document.getElementById('status').textContent =
 `modo: ${data.modo}
 stream_ok: ${data.stream_ok}
 stream_url: ${data.stream_url}
 sinal_em_registro: ${data.nome_sinal_atual || '-'}
 ultimo_reconhecido: ${data.ultimo_reconhecido || '-'}
 total_sinais: ${data.total_sinais}
-threshold: ${data.threshold}`;
-      } catch (e) {
-        document.getElementById('status').textContent = 'Falha ao buscar status.';
-      }
-    }
+threshold: ${data.threshold}`
 
-    async function registrar() {
-      const nome = document.getElementById('nomeSinal').value.trim();
-      if (!nome) {
-        alert('Informe o nome do sinal.');
-        return;
-      }
-      await fetch(`/registrar?nome=${encodeURIComponent(nome)}`);
-      atualizarStatus();
-    }
 
-    async function reconhecer() {
-      await fetch('/reconhecer');
-      atualizarStatus();
-    }
+// 🔊 SE RECONHECER SINAL NOVO, FALAR
 
-    async function parar() {
-      await fetch('/parar');
-      atualizarStatus();
-    }
+if(data.ultimo_reconhecido && data.ultimo_reconhecido !== ultimoFalado){
 
-    atualizarStatus();
-    setInterval(atualizarStatus, 2000);
-  </script>
+ultimoFalado = data.ultimo_reconhecido
+
+falar(data.ultimo_reconhecido)
+
+}
+
+}catch(e){
+
+document.getElementById('status').textContent="Falha ao buscar status"
+
+}
+
+}
+
+// ===============================
+// CONTROLES
+// ===============================
+
+async function registrar(){
+
+const nome = document.getElementById('nomeSinal').value.trim()
+
+if(!nome){
+alert("Informe o nome do sinal")
+return
+}
+
+await fetch(`/registrar?nome=${encodeURIComponent(nome)}`)
+
+atualizarStatus()
+
+}
+
+async function reconhecer(){
+
+await fetch('/reconhecer')
+
+atualizarStatus()
+
+}
+
+async function parar(){
+
+await fetch('/parar')
+
+atualizarStatus()
+
+}
+
+// ===============================
+
+atualizarStatus()
+
+setInterval(atualizarStatus,1000)
+
+</script>
+
 </body>
 </html>
 """
+
+# INDEX_HTML = """
+# <!DOCTYPE html>
+# <html lang="pt-BR">
+# <head>
+#   <meta charset="UTF-8" />
+#   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+#   <title>DROL Controle</title>
+#   <style>
+#     :root {
+#       --bg: #f4f7fb;
+#       --card: #ffffff;
+#       --text: #1f2937;
+#       --accent: #0f766e;
+#       --danger: #b91c1c;
+#       --border: #d1d5db;
+#     }
+    
+#     body {
+#       margin: 0;
+#       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+#       background: linear-gradient(135deg, #dbeafe, var(--bg));
+#       color: var(--text);
+#     }
+#     .container {
+#       max-width: 980px;
+#       margin: 20px auto;
+#       padding: 0 16px;
+#     }
+#     .card {
+#       background: var(--card);
+#       border-radius: 14px;
+#       border: 1px solid var(--border);
+#       padding: 16px;
+#       box-shadow: 0 8px 22px rgba(0,0,0,.06);
+#     }
+#     h1 { margin-top: 0; }
+#     img {
+#       width: 100%;
+#       border-radius: 10px;
+#       border: 1px solid var(--border);
+#       background: #111;
+#     }
+#     .controls {
+#       margin-top: 14px;
+#       display: grid;
+#       grid-template-columns: 1fr 1fr;
+#       gap: 10px;
+#     }
+#     .controls input, .controls button {
+#       padding: 10px;
+#       border-radius: 10px;
+#       border: 1px solid var(--border);
+#       font-size: 15px;
+#     }
+#     .controls button {
+#       cursor: pointer;
+#       background: var(--accent);
+#       color: white;
+#       border: none;
+#     }
+#     .controls button.stop { background: var(--danger); }
+#     status {
+#       margin-top: 12px;
+#       padding: 10px;
+#       border: 1px dashed var(--border);
+#       border-radius: 8px;
+#       background: #f9fafb;
+#       white-space: pre-wrap;
+#       font-family: Consolas, monospace;
+#     }
+#     @media (max-width: 700px) {
+#       .controls { grid-template-columns: 1fr; }
+#     }
+#   </style>
+# </head>
+# <body>
+#   <div class="container">
+#     <div class="card">
+#       <h1>DROL - Painel Unificado</h1>
+#       <img src="/video_feed" alt="Video em tempo real" />
+#       <div class="controls">
+#         <input id="nomeSinal" type="text" placeholder="Nome do sinal (ex: A)" />
+#         <button onclick="registrar()">Registrar sinal</button>
+#         <button onclick="reconhecer()">Ativar reconhecimento</button>
+#         <button class="stop" onclick="parar()">Parar</button>
+#       </div>
+#       <div id="status">Carregando status...</div>
+#     </div>
+#   </div>
+
+#   <script>
+#     async function atualizarStatus() {
+#       try {
+#         const res = await fetch('/status');
+#         const data = await res.json();
+#         document.getElementById('status').textContent =
+# `modo: ${data.modo}
+# stream_ok: ${data.stream_ok}
+# stream_url: ${data.stream_url}
+# sinal_em_registro: ${data.nome_sinal_atual || '-'}
+# ultimo_reconhecido: ${data.ultimo_reconhecido || '-'}
+# total_sinais: ${data.total_sinais}
+# threshold: ${data.threshold}`;
+#       } catch (e) {
+#         document.getElementById('status').textContent = 'Falha ao buscar status.';
+#       }
+#     }
+
+#     async function registrar() {
+#       const nome = document.getElementById('nomeSinal').value.trim();
+#       if (!nome) {
+#         alert('Informe o nome do sinal.');
+#         return;
+#       }
+#       await fetch(`/registrar?nome=${encodeURIComponent(nome)}`);
+#       atualizarStatus();
+#     }
+
+#     async function reconhecer() {
+#       await fetch('/reconhecer');
+#       atualizarStatus();
+#     }
+
+#     async function parar() {
+#       await fetch('/parar');
+#       atualizarStatus();
+#     }
+
+#     atualizarStatus();
+#     setInterval(atualizarStatus, 2000);
+#   </script>
+# </body>
+# </html>
+# """
 
 # ================== ROTAS ==================
 @app.route("/")

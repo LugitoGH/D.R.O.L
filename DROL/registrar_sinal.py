@@ -44,6 +44,13 @@ except Exception as e:
     logger.error("Erro ao carregar modelo MediaPipe em %s: %s", MODEL_PATH, e)
     raise
 
+edges = [
+    (0,1),(1,2),(2,3),(3,4),
+    (0,5),(5,6),(6,7),(7,8),
+    (0,9),(9,10),(10,11),(11,12),
+    (0,13),(13,14),(14,15),(15,16),
+    (0,17),(17,18),(18,19),(19,20)
+]
 
 def detectar_gateway_linux():
     try:
@@ -264,6 +271,11 @@ def generate_frames():
                 for hand in result.hand_landmarks:
                     h, w, _ = frame.shape
                 
+                lm_points = [(int(lm.x*w), int(lm.y*h)) for lm in hand]
+                
+                for (i,j) in edges:
+                    cv2.line(frame, lm_points[i], lm_points[j], (0,255,0), 2)
+
                 for lm in hand:
                     cx, cy = int(lm.x * w), int(lm.y * h)
                     cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)
@@ -312,6 +324,9 @@ def generate_frames():
                                 (0, 255, 0),
                                 2,
                             )
+            else:
+                ultimo_reconhecido = ""
+
             cv2.putText(
                 frame,
                 f"Modo: {modo}",
@@ -491,9 +506,8 @@ threshold: ${data.threshold}`
 
 // 🔊 SE RECONHECER SINAL NOVO, FALAR
 
-if(data.ultimo_reconhecido && data.ultimo_reconhecido !== ultimoFalado){
+if(data.ultimo_reconhecido){
 
-ultimoFalado = data.ultimo_reconhecido
 
 falar(data.ultimo_reconhecido)
 
@@ -553,141 +567,6 @@ setInterval(atualizarStatus,1000)
 </body>
 </html>
 """
-
-# INDEX_HTML = """
-# <!DOCTYPE html>
-# <html lang="pt-BR">
-# <head>
-#   <meta charset="UTF-8" />
-#   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-#   <title>DROL Controle</title>
-#   <style>
-#     :root {
-#       --bg: #f4f7fb;
-#       --card: #ffffff;
-#       --text: #1f2937;
-#       --accent: #0f766e;
-#       --danger: #b91c1c;
-#       --border: #d1d5db;
-#     }
-    
-#     body {
-#       margin: 0;
-#       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-#       background: linear-gradient(135deg, #dbeafe, var(--bg));
-#       color: var(--text);
-#     }
-#     .container {
-#       max-width: 980px;
-#       margin: 20px auto;
-#       padding: 0 16px;
-#     }
-#     .card {
-#       background: var(--card);
-#       border-radius: 14px;
-#       border: 1px solid var(--border);
-#       padding: 16px;
-#       box-shadow: 0 8px 22px rgba(0,0,0,.06);
-#     }
-#     h1 { margin-top: 0; }
-#     img {
-#       width: 100%;
-#       border-radius: 10px;
-#       border: 1px solid var(--border);
-#       background: #111;
-#     }
-#     .controls {
-#       margin-top: 14px;
-#       display: grid;
-#       grid-template-columns: 1fr 1fr;
-#       gap: 10px;
-#     }
-#     .controls input, .controls button {
-#       padding: 10px;
-#       border-radius: 10px;
-#       border: 1px solid var(--border);
-#       font-size: 15px;
-#     }
-#     .controls button {
-#       cursor: pointer;
-#       background: var(--accent);
-#       color: white;
-#       border: none;
-#     }
-#     .controls button.stop { background: var(--danger); }
-#     status {
-#       margin-top: 12px;
-#       padding: 10px;
-#       border: 1px dashed var(--border);
-#       border-radius: 8px;
-#       background: #f9fafb;
-#       white-space: pre-wrap;
-#       font-family: Consolas, monospace;
-#     }
-#     @media (max-width: 700px) {
-#       .controls { grid-template-columns: 1fr; }
-#     }
-#   </style>
-# </head>
-# <body>
-#   <div class="container">
-#     <div class="card">
-#       <h1>DROL - Painel Unificado</h1>
-#       <img src="/video_feed" alt="Video em tempo real" />
-#       <div class="controls">
-#         <input id="nomeSinal" type="text" placeholder="Nome do sinal (ex: A)" />
-#         <button onclick="registrar()">Registrar sinal</button>
-#         <button onclick="reconhecer()">Ativar reconhecimento</button>
-#         <button class="stop" onclick="parar()">Parar</button>
-#       </div>
-#       <div id="status">Carregando status...</div>
-#     </div>
-#   </div>
-
-#   <script>
-#     async function atualizarStatus() {
-#       try {
-#         const res = await fetch('/status');
-#         const data = await res.json();
-#         document.getElementById('status').textContent =
-# `modo: ${data.modo}
-# stream_ok: ${data.stream_ok}
-# stream_url: ${data.stream_url}
-# sinal_em_registro: ${data.nome_sinal_atual || '-'}
-# ultimo_reconhecido: ${data.ultimo_reconhecido || '-'}
-# total_sinais: ${data.total_sinais}
-# threshold: ${data.threshold}`;
-#       } catch (e) {
-#         document.getElementById('status').textContent = 'Falha ao buscar status.';
-#       }
-#     }
-
-#     async function registrar() {
-#       const nome = document.getElementById('nomeSinal').value.trim();
-#       if (!nome) {
-#         alert('Informe o nome do sinal.');
-#         return;
-#       }
-#       await fetch(`/registrar?nome=${encodeURIComponent(nome)}`);
-#       atualizarStatus();
-#     }
-
-#     async function reconhecer() {
-#       await fetch('/reconhecer');
-#       atualizarStatus();
-#     }
-
-#     async function parar() {
-#       await fetch('/parar');
-#       atualizarStatus();
-#     }
-
-#     atualizarStatus();
-#     setInterval(atualizarStatus, 2000);
-#   </script>
-# </body>
-# </html>
-# """
 
 # ================== ROTAS ==================
 @app.route("/")

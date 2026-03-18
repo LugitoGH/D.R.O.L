@@ -19,6 +19,7 @@ app = Flask(__name__)
 # ================== PATHS SEGUROS ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "models", "hand_landmarker.task")
+FACE_MODEL_PATH = os.path.join(BASE_DIR, "models", "face_landmarker.task")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 SINAIS_PATH = os.path.join(DATA_DIR, "sinais.json")
 THRESHOLD_RECONHECIMENTO = float(os.getenv("DROL_RECOGNITION_THRESHOLD", "0.15"))
@@ -31,6 +32,16 @@ BaseOptions = mp.tasks.BaseOptions
 HandLandmarker = mp.tasks.vision.HandLandmarker
 HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 RunningMode = mp.tasks.vision.RunningMode
+
+FaceLandmarker = mp.tasks.vision.FaceLandmarker
+FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
+
+optionsFace = FaceLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path=FACE_MODEL_PATH),
+    running_mode=RunningMode.VIDEO
+)
+
+landmarkerHead = FaceLandmarker.create_from_options(optionsFace)
 
 try:
     options = HandLandmarkerOptions(
@@ -50,6 +61,13 @@ edges = [
     (0,9),(9,10),(10,11),(11,12),
     (0,13),(13,14),(14,15),(15,16),
     (0,17),(17,18),(18,19),(19,20)
+]
+
+face_edges = [
+ (33,133),  # olho esquerdo
+ (362,263), # olho direito
+ (61,291),  # boca
+ (199,152), # queixo
 ]
 
 def detectar_gateway_linux():
@@ -260,6 +278,7 @@ def generate_frames():
 
             falhas_stream = 0
             frame = cv2.flip(frame, 1)
+            h, w, _ = frame.shape
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
@@ -267,63 +286,77 @@ def generate_frames():
             timestamp_ms = int(time.time() * 1000)
             result = landmarker.detect_for_video(mp_image, timestamp_ms)
 
+
+            resultHead = landmarkerHead.detect_for_video(mp_image, timestamp_ms)
+
+            if resultHead.face_landmarks:
+                for face in resultHead.face_landmarks:
+
+                    lm_points = [(int(lm.x*w), int(lm.y*h)) for lm in face]
+
+                    for (i,j) in face_edges:
+                        cv2.line(frame, lm_points[i], lm_points[j], (255,0,0), 1)
+            
+            
+
             if result.hand_landmarks:
                 for hand in result.hand_landmarks:
+                    lm_points = [(int(lm.x*w), int(lm.y*h)) for lm in hand]
                     h, w, _ = frame.shape
                 
-                lm_points = [(int(lm.x*w), int(lm.y*h)) for lm in hand]
-                
-                for (i,j) in edges:
-                    cv2.line(frame, lm_points[i], lm_points[j], (0,255,0), 2)
+                    
+                    
+                    for (i,j) in edges:
+                        cv2.line(frame, lm_points[i], lm_points[j], (0,255,0), 2)
 
-                for lm in hand:
-                    cx, cy = int(lm.x * w), int(lm.y * h)
-                    cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)
+                    for lm in hand:
+                        cx, cy = int(lm.x * w), int(lm.y * h)
+                        cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)
 
-                    if modo == "registrar" and time.time() - tempo_registro >= REGISTRO_SEGUNDOS:
-                        vetor = normalizar_e_vetorizar(hand)
-                        salvar_sinal(nome_sinal_atual, vetor)
-                        carregar_sinais()
-                        set_modo("normal", "registro finalizado")
+                        if modo == "registrar" and time.time() - tempo_registro >= REGISTRO_SEGUNDOS:
+                            vetor = normalizar_e_vetorizar(hand)
+                            salvar_sinal(nome_sinal_atual, vetor)
+                            carregar_sinais()
+                            set_modo("normal", "registro finalizado")
 
-                    if modo == "reconhecer":
+                        if modo == "reconhecer":
 
-                        vetor_atual = normalizar_e_vetorizar(hand)
+                            vetor_atual = normalizar_e_vetorizar(hand)
 
-                        melhor_distancia = float("inf")
-                        melhor_sinal = None
+                            melhor_distancia = float("inf")
+                            melhor_sinal = None
 
-                        for sinal in sinais:
-                            vetor_salvo = sinal.get("vetor", [])
+                            for sinal in sinais:
+                                vetor_salvo = sinal.get("vetor", [])
 
-                            if len(vetor_salvo) != 63:
-                                continue
+                                if len(vetor_salvo) != 63:
+                                    continue
 
-                            soma = 0
-                            for i in range(63):
-                                soma += (vetor_salvo[i] - vetor_atual[i]) ** 2
+                                soma = 0
+                                for i in range(63):
+                                    soma += (vetor_salvo[i] - vetor_atual[i]) ** 2
 
-                            distancia_media = math.sqrt(soma / 63)
+                                distancia_media = math.sqrt(soma / 63)
 
-                            if distancia_media < melhor_distancia:
-                                melhor_distancia = distancia_media
-                                melhor_sinal = sinal["nome"]
+                                if distancia_media < melhor_distancia:
+                                    melhor_distancia = distancia_media
+                                    melhor_sinal = sinal["nome"]
 
-                        #logger.info("Melhor distancia: %.4f", melhor_distancia)
+                            #logger.info("Melhor distancia: %.4f", melhor_distancia)
 
-                        if melhor_distancia < THRESHOLD_RECONHECIMENTO:
-                            ultimo_reconhecido = melhor_sinal
-                            texto = melhor_sinal
+                            if melhor_distancia < THRESHOLD_RECONHECIMENTO:
+                                ultimo_reconhecido = melhor_sinal
+                                texto = melhor_sinal
 
-                            cv2.putText(
-                                frame,
-                                f"Sinal: {melhor_sinal}",
-                                (20, 40),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                1,
-                                (0, 255, 0),
-                                2,
-                            )
+                                cv2.putText(
+                                    frame,
+                                    f"Sinal: {melhor_sinal}",
+                                    (20, 40),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    1,
+                                    (0, 255, 0),
+                                    2,
+                                )
             else:
                 ultimo_reconhecido = ""
 

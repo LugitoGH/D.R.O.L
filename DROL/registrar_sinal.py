@@ -278,6 +278,8 @@ def generate_frames():
 
             falhas_stream = 0
             frame = cv2.flip(frame, 1)
+            frame = cv2.resize(frame, (640, 360))
+            
             h, w, _ = frame.shape
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -289,6 +291,7 @@ def generate_frames():
 
             resultHead = landmarkerHead.detect_for_video(mp_image, timestamp_ms)
 
+                
             if resultHead.face_landmarks:
                 for face in resultHead.face_landmarks:
 
@@ -375,7 +378,7 @@ def generate_frames():
         if frame is None:
             frame = frame_aguardando_stream()
 
-        _, buffer = cv2.imencode(".jpg", frame)
+        _, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
         frame_bytes = buffer.tobytes()
         yield b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
 

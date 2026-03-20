@@ -390,61 +390,214 @@ INDEX_HTML = """
 
 <style>
 :root {
---bg:#f4f7fb;
+--bg-start:#a662ee;
+--bg-end:#b46bf4;
+--header:#6f068d;
+--header-dark:#5d0477;
 --card:#ffffff;
---text:#1f2937;
---accent:#0f766e;
---danger:#b91c1c;
---border:#d1d5db;
+--text:#111111;
+--border:#111111;
+--purple:#6d05d7;
+--purple-dark:#6a098f;
+--danger:#ff140b;
+--shadow:0 22px 50px rgba(64, 0, 94, 0.18);
+--radius-xl:42px;
+--radius-lg:34px;
+}
+
+*{
+box-sizing:border-box;
 }
 
 body{
 margin:0;
-font-family:Segoe UI,Tahoma,Verdana;
-background:linear-gradient(135deg,#dbeafe,var(--bg));
+font-family:"Trebuchet MS","Century Gothic",Verdana,sans-serif;
+background:linear-gradient(90deg,var(--bg-start),var(--bg-end));
 color:var(--text);
+min-height:100vh;
 }
 
 .container{
-max-width:980px;
-margin:20px auto;
-padding:0 16px;
+min-height:100vh;
 }
 
-.card{
+.topbar{
+background:linear-gradient(90deg,var(--header-dark),var(--header));
+padding:18px 34px;
+display:flex;
+align-items:center;
+gap:28px;
+color:#fff;
+box-shadow:0 10px 24px rgba(61, 0, 79, 0.28);
+}
+
+.brand-mark{
+font-size:5rem;
+font-weight:900;
+line-height:0.8;
+letter-spacing:-4px;
+position:relative;
+text-transform:lowercase;
+}
+
+.brand-mark::after{
+content:"";
+position:absolute;
+left:13px;
+bottom:-11px;
+width:58px;
+height:10px;
+border:8px solid #fff;
+border-top:none;
+border-radius:0 0 18px 18px;
+}
+
+.divider{
+width:4px;
+align-self:stretch;
+background:rgba(255,255,255,.85);
+border-radius:999px;
+}
+
+.topbar-title{
+margin:0;
+font-size:1.85rem;
+line-height:1.2;
+font-weight:900;
+letter-spacing:0.02em;
+text-transform:uppercase;
+}
+
+.dashboard{
+max-width:1700px;
+margin:0 auto;
+padding:60px 42px 48px;
+display:grid;
+grid-template-columns:minmax(0,2.3fr) minmax(300px,.95fr);
+gap:36px;
+}
+
+.panel{
 background:var(--card);
-border-radius:14px;
-border:1px solid var(--border);
-padding:16px;
-box-shadow:0 8px 22px rgba(0,0,0,.06);
+border-radius:var(--radius-xl);
+padding:28px 30px 34px;
+box-shadow:var(--shadow);
+}
+
+.panel-title{
+display:flex;
+align-items:center;
+gap:18px;
+margin:0 0 22px;
+font-size:2rem;
+font-weight:900;
+}
+
+.camera-badge{
+display:inline-flex;
+align-items:center;
+justify-content:center;
+width:42px;
+height:42px;
+border-radius:10px;
+background:linear-gradient(180deg,#dc1df7,var(--purple));
+position:relative;
+flex-shrink:0;
+}
+
+.camera-badge::after{
+content:"";
+position:absolute;
+right:-12px;
+width:0;
+height:0;
+border-top:10px solid transparent;
+border-bottom:10px solid transparent;
+border-left:14px solid #cf1cf1;
+}
+
+.video-shell{
+border:4px solid var(--border);
+border-radius:var(--radius-lg);
+overflow:hidden;
+background:#f6f3fb;
+min-height:520px;
+display:flex;
 }
 
 img{
 width:100%;
-border-radius:10px;
-border:1px solid var(--border);
-background:#111;
+height:100%;
+display:block;
+object-fit:cover;
+background:#f6f3fb;
+}
+
+.sidebar{
+display:flex;
+flex-direction:column;
+gap:22px;
+}
+
+.sidebar-title{
+margin:0 0 18px;
+font-size:1.95rem;
+font-weight:900;
+text-align:center;
 }
 
 .controls{
-margin-top:14px;
 display:grid;
-grid-template-columns:1fr 1fr;
-gap:10px;
+gap:18px;
 }
 
 .controls input,.controls button{
-padding:10px;
-border-radius:10px;
-border:1px solid var(--border);
-font-size:15px;
+width:100%;
+min-height:82px;
+padding:18px 22px;
+border:none;
+border-radius:22px;
+font-size:1.15rem;
+font-family:inherit;
+font-weight:800;
+text-align:center;
+}
+
+.controls input{
+background:#f7f2fd;
+color:#42205f;
+border:3px solid rgba(109,5,215,.14);
+text-align:left;
+padding-left:24px;
+outline:none;
+}
+
+.controls input::placeholder{
+color:#7d5a9c;
 }
 
 .controls button{
 cursor:pointer;
-background:var(--accent);
 color:white;
-border:none;
+box-shadow:0 14px 28px rgba(82, 0, 145, 0.18);
+transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
+}
+
+.controls button:hover{
+transform:translateY(-2px);
+filter:brightness(1.02);
+}
+
+.controls button:active{
+transform:translateY(0);
+}
+
+.controls button:nth-of-type(1){
+background:linear-gradient(180deg,#7e17ff,var(--purple));
+}
+
+.controls button:nth-of-type(2){
+background:linear-gradient(180deg,#7d109f,var(--purple-dark));
 }
 
 .controls button.stop{
@@ -452,13 +605,130 @@ background:var(--danger);
 }
 
 #status{
-margin-top:12px;
-padding:10px;
-border:1px dashed var(--border);
-border-radius:8px;
-background:#f9fafb;
+margin-top:8px;
+padding:24px 22px;
+min-height:280px;
+border:4px solid var(--border);
+border-radius:var(--radius-lg);
+background:#fff;
 white-space:pre-wrap;
-font-family:Consolas,monospace;
+font-family:Consolas,"Courier New",monospace;
+font-size:.98rem;
+line-height:1.55;
+overflow:auto;
+}
+
+.toast-container{
+position:fixed;
+right:24px;
+bottom:24px;
+display:grid;
+gap:12px;
+z-index:9999;
+}
+
+.toast{
+min-width:280px;
+max-width:360px;
+padding:16px 18px;
+border-radius:20px;
+color:#fff;
+box-shadow:0 18px 34px rgba(34, 0, 57, 0.28);
+font-weight:800;
+line-height:1.35;
+animation:toast-in .22s ease;
+}
+
+.toast--success{
+background:linear-gradient(180deg,#7e17ff,var(--purple));
+}
+
+.toast--info{
+background:linear-gradient(180deg,#7d109f,var(--purple-dark));
+}
+
+.toast--danger{
+background:linear-gradient(180deg,#ff5b53,var(--danger));
+}
+
+@keyframes toast-in{
+from{
+opacity:0;
+transform:translateY(10px);
+}
+to{
+opacity:1;
+transform:translateY(0);
+}
+}
+
+@media (max-width: 1180px){
+.topbar{
+padding:18px 24px;
+flex-wrap:wrap;
+gap:18px;
+}
+
+.divider{
+display:none;
+}
+
+.topbar-title{
+font-size:1.45rem;
+}
+
+.dashboard{
+grid-template-columns:1fr;
+padding:30px 18px 28px;
+}
+
+.video-shell{
+min-height:400px;
+}
+}
+
+@media (max-width: 720px){
+.brand-mark{
+font-size:3.6rem;
+letter-spacing:-3px;
+}
+
+.brand-mark::after{
+left:9px;
+width:42px;
+height:8px;
+border-width:6px;
+bottom:-9px;
+}
+
+.panel{
+padding:20px 18px 24px;
+border-radius:30px;
+}
+
+.panel-title,.sidebar-title{
+font-size:1.7rem;
+}
+
+.controls input,.controls button{
+min-height:68px;
+font-size:1rem;
+}
+
+.video-shell,#status{
+border-radius:28px;
+}
+
+.toast-container{
+left:18px;
+right:18px;
+bottom:18px;
+}
+
+.toast{
+min-width:auto;
+max-width:none;
+}
 }
 </style>
 </head>
@@ -466,27 +736,41 @@ font-family:Consolas,monospace;
 <body>
 
 <div class="container">
-<div class="card">
+<header class="topbar">
+<div class="brand-mark">drol</div>
+<div class="divider"></div>
+<h1 class="topbar-title">Dispositivo de Reconhecimento Orientação e Tradução de Libras</h1>
+</header>
 
-<h1>DROL - Painel Unificado</h1>
+<main class="dashboard">
+<section class="panel">
+<h2 class="panel-title">
+<span class="camera-badge" aria-hidden="true"></span>
+<span>Reconhecimento de libras</span>
+</h2>
 
-<img src="/video_feed">
+<div class="video-shell">
+<img src="/video_feed" alt="Transmissao da camera do DROL">
+</div>
+</section>
+
+<aside class="panel sidebar">
+<h2 class="sidebar-title">Controles</h2>
 
 <div class="controls">
-
 <input id="nomeSinal" placeholder="Nome do sinal">
+
+<button onclick="reconhecer()">Reconhecer sinal</button>
 
 <button onclick="registrar()">Registrar sinal</button>
 
-<button onclick="reconhecer()">Ativar reconhecimento</button>
-
-<button class="stop" onclick="parar()">Parar</button>
-
+<button class="stop" onclick="parar()">Reiniciar</button>
 </div>
 
 <div id="status">Carregando status...</div>
-
-</div>
+</aside>
+</main>
+<div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 </div>
 
 <script>
@@ -497,6 +781,9 @@ font-family:Consolas,monospace;
 
 let ultimoFalado = ""
 let ultimoTempo = 0
+let ultimoReconhecidoNotificado = ""
+let ultimoStatus = null
+let ultimoNomeRegistrado = ""
 
 function falar(texto){
 
@@ -516,6 +803,28 @@ speechSynthesis.speak(fala)
 
 }
 
+function notificar(mensagem, tipo="info"){
+
+const container = document.getElementById('toastContainer')
+const toast = document.createElement('div')
+
+toast.className = `toast toast--${tipo}`
+toast.textContent = mensagem
+
+container.appendChild(toast)
+
+setTimeout(() => {
+toast.style.opacity = '0'
+toast.style.transform = 'translateY(10px)'
+toast.style.transition = 'opacity .2s ease, transform .2s ease'
+}, 3200)
+
+setTimeout(() => {
+toast.remove()
+}, 3450)
+
+}
+
 // ===============================
 // STATUS
 // ===============================
@@ -526,6 +835,18 @@ try{
 
 const res = await fetch('/status')
 const data = await res.json()
+
+const registroFinalizado =
+ultimoStatus &&
+ultimoStatus.modo === 'registrar' &&
+data.modo === 'normal' &&
+data.total_sinais > ultimoStatus.total_sinais
+
+if(registroFinalizado){
+const nomeRegistrado = ultimoStatus.nome_sinal_atual || ultimoNomeRegistrado || 'Sinal'
+notificar(`${nomeRegistrado} registrado com sucesso`, 'success')
+ultimoNomeRegistrado = ""
+}
 
 document.getElementById('status').textContent =
 `modo: ${data.modo}
@@ -541,10 +862,19 @@ threshold: ${data.threshold}`
 
 if(data.ultimo_reconhecido){
 
+if(data.ultimo_reconhecido !== ultimoReconhecidoNotificado){
+notificar(`Sinal reconhecido: ${data.ultimo_reconhecido}`, 'info')
+ultimoReconhecidoNotificado = data.ultimo_reconhecido
+}
 
 falar(data.ultimo_reconhecido)
 
 }
+else{
+ultimoReconhecidoNotificado = ""
+}
+
+ultimoStatus = data
 
 }catch(e){
 
@@ -566,6 +896,8 @@ if(!nome){
 alert("Informe o nome do sinal")
 return
 }
+
+ultimoNomeRegistrado = nome
 
 await fetch(`/registrar?nome=${encodeURIComponent(nome)}`)
 

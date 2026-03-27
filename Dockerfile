@@ -21,4 +21,4 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-CMD ["python", "DROL/registrar_sinal.py"]
+CMD ["python", "DROL/registrar_sinal copy.py"]

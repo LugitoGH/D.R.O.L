@@ -39,6 +39,8 @@ FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
 movimentos = []
 global hand0
 moveDb = False
+hand0 = None
+gravando_movimento = False
 
 optionsFace = FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=FACE_MODEL_PATH),
@@ -257,7 +259,7 @@ cap, stream_url_ativo = abrir_stream_camera()
 
 # ================== STREAM ==================
 def generate_frames():
-    global frame_id, tempo_registro, ultimo_reconhecido, cap, stream_url_ativo, falhas_stream
+    global frame_id, tempo_registro, ultimo_reconhecido, cap, stream_url_ativo, falhas_stream, hand0, moveDb, movimentos, gravando_movimento
 
     while True:
         frame = None
@@ -333,14 +335,15 @@ def generate_frames():
                         
 
                         if modo == "registrarMove":
-                            if time.time() - tempo_registro <= 0.1 and moveDb == False:
+                            if moveDb == False:
                                 moveDb = True
                                 movimentos = []
+                                
                                 vetor = normalizar_e_vetorizar(hand, hand[0])
                                 hand0 = hand
                                 movimentos.append(vetor)
 
-                            if time.time() - tempo_registro >= REGISTRO_SEGUNDOS:
+                            if gravando_movimento == False:
                                 vetor = normalizar_e_vetorizar(hand, hand0[0])
                                 movimentos.append(vetor)
                                 salvar_sinal("movimento", nome_sinal_atual, movimentos)
@@ -629,6 +632,10 @@ background:linear-gradient(180deg,#7e17ff,var(--purple));
 background:linear-gradient(180deg,#7d109f,var(--purple-dark));
 }
 
+.controls button:nth-of-type(3){
+background:linear-gradient(180deg, #FFD54F, #FFC107);
+}
+
 .controls button.stop{
 background:var(--danger);
 }
@@ -793,7 +800,7 @@ max-width:none;
 
 <button onclick="registrar()">Registrar sinal</button>
 
-<button onclick="registrarMove()">Registrar movimento</button>
+<button id="btnMove" onclick="registrarMove()">Registrar movimento</button>
 
 <button class="stop" onclick="parar()">Reiniciar</button>
 </div>
@@ -919,39 +926,30 @@ document.getElementById('status').textContent="Falha ao buscar status"
 // CONTROLES
 // ===============================
 
-async function registrar(){
-
-const nome = document.getElementById('nomeSinal').value.trim()
-
-if(!nome){
-alert("Informe o nome do sinal")
-return
-}
-
-ultimoNomeRegistrado = nome
-
-await fetch(`/registrar?nome=${encodeURIComponent(nome)}`)
-
-atualizarStatus()
-
-}
-
 async function registrarMove(){
 
 const nome = document.getElementById('nomeSinal').value.trim()
 
-if(!nome){
-alert("Informe o nome do sinal")
-return
+const res = await fetch(`/registrarMove?nome=${encodeURIComponent(nome)}`)
+const data = await res.json()
+
+notificar(data.mensagem, 'info')
+
+// troca texto do botão
+const btn = document.getElementById('btnMove')
+
+if(btn.textContent.includes("Registrar")){
+    btn.textContent = "Parar movimento"
+    btn.style.background = "#ff140b"
+}else{
+    btn.textContent = "Registrar movimento"
+    btn.style.background = "linear-gradient(180deg, #FFD54F, #FFC107)"
 }
-
-ultimoNomeRegistrado = nome
-
-await fetch(`/registrarMove?nome=${encodeURIComponent(nome)}`)
 
 atualizarStatus()
 
 }
+
 
 async function reconhecer(){
 
@@ -1017,16 +1015,29 @@ def registrar():
 
 @app.route("/registrarMove")
 def registrarMove():
-    global nome_sinal_atual, tempo_registro
-    nome = request.args.get("nome", "").strip()
-    if not nome:
-        return jsonify({"ok": False, "erro": "Use /registrarMove?nome=A ou preencha o formulario"}), 400
+    global nome_sinal_atual, tempo_registro, gravando_movimento, moveDb, movimentos
 
-    nome_sinal_atual = nome
-    tempo_registro = time.time()
-    set_modo("registrarMove", f"registro solicitado para '{nome}'")
-    logger.info("Iniciando registro do sinal '%s' por %d segundos.", nome, REGISTRO_SEGUNDOS)
-    return jsonify({"ok": True, "mensagem": f"Registrando sinal {nome} por {REGISTRO_SEGUNDOS} segundos"})
+    nome = request.args.get("nome", "").strip()
+
+    if not gravando_movimento:
+        if not nome:
+            return jsonify({"ok": False, "erro": "Informe o nome do sinal"}), 400
+
+        nome_sinal_atual = nome
+        tempo_registro = time.time()
+        gravando_movimento = True
+        moveDb = False
+        movimentos = []
+
+        set_modo("registrarMove", f"iniciando '{nome}'")
+        logger.info("Iniciando gravação de movimento: %s", nome)
+
+        return jsonify({"ok": True, "mensagem": f"Gravando movimento {nome}..."})
+
+    else:
+        gravando_movimento = False
+
+        return jsonify({"ok": True, "mensagem": "Gravação finalizada"})
 
 
 @app.route("/reconhecer")

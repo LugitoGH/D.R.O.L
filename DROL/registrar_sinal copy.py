@@ -41,6 +41,7 @@ global hand0
 moveDb = False
 hand0 = None
 gravando_movimento = False
+detectando_movimento = False
 
 optionsFace = FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=FACE_MODEL_PATH),
@@ -229,6 +230,7 @@ def distancia(lm1, lm2):
 def status_dict():
     return {
         "modo": modo,
+        "detectando_movimento": detectando_movimento,
         "nome_sinal_atual": nome_sinal_atual,
         "ultimo_reconhecido": ultimo_reconhecido,
         "stream_url": stream_url_ativo,
@@ -259,7 +261,7 @@ cap, stream_url_ativo = abrir_stream_camera()
 
 # ================== STREAM ==================
 def generate_frames():
-    global frame_id, tempo_registro, ultimo_reconhecido, cap, stream_url_ativo, falhas_stream, hand0, moveDb, movimentos, gravando_movimento
+    global frame_id, tempo_registro, ultimo_reconhecido, cap, stream_url_ativo, falhas_stream, hand0, moveDb, movimentos, gravando_movimento, detectando_movimento
 
     while True:
         frame = None
@@ -299,16 +301,16 @@ def generate_frames():
             result = landmarker.detect_for_video(mp_image, timestamp_ms)
 
 
-            resultHead = landmarkerHead.detect_for_video(mp_image, timestamp_ms)
+            # resultHead = landmarkerHead.detect_for_video(mp_image, timestamp_ms)
 
                 
-            if resultHead.face_landmarks:
-                for face in resultHead.face_landmarks:
+            # if resultHead.face_landmarks:
+            #     for face in resultHead.face_landmarks:
 
-                    lm_points = [(int(lm.x*w), int(lm.y*h)) for lm in face]
+            #         lm_points = [(int(lm.x*w), int(lm.y*h)) for lm in face]
 
-                    for (i,j) in face_edges:
-                        cv2.line(frame, lm_points[i], lm_points[j], (255,0,0), 1)
+            #         for (i,j) in face_edges:
+            #             cv2.line(frame, lm_points[i], lm_points[j], (255,0,0), 1)
             
             
 
@@ -343,9 +345,14 @@ def generate_frames():
                                 hand0 = hand
                                 movimentos.append(vetor)
 
+                            if moveDb == True and gravando_movimento == True:
+                                vetor = normalizar_e_vetorizar(hand, hand0[0])
+                                movimentos.append(vetor)
+
                             if gravando_movimento == False:
                                 vetor = normalizar_e_vetorizar(hand, hand0[0])
                                 movimentos.append(vetor)
+                                movimentos = [movimentos[0], movimentos[len(movimentos)//2], movimentos[-1]]
                                 salvar_sinal("movimento", nome_sinal_atual, movimentos)
                                 set_modo("normal", "registro finalizado")
                                 moveDb = False
@@ -356,9 +363,49 @@ def generate_frames():
 
                             melhor_distancia = float("inf")
                             melhor_sinal = None
+                            melhor_dist_Move = float("inf")
 
                             for sinal in sinais:
-                                if sinal.get("tipo") == "sinal":
+                                if (sinal.get("tipo") == "movimento"):
+                                    vetor_salvo = sinal["vetor"][0]
+                                    
+                                    if len(vetor_salvo) != 63:
+                                        continue
+                                    
+                                    soma = 0
+                                    for i in range(63):
+                                        soma += (vetor_salvo[i] - vetor_atual[i]) ** 2
+
+                                    distancia_media = math.sqrt(soma / 63)
+
+                                    if distancia_media < melhor_distancia:
+                                        
+                                        melhor_dist_Move = distancia_media
+                                        melhor_sinal = sinal["nome"]
+                                        #detectando_movimento = True
+                                        #texto = melhor_sinal
+
+                                       
+                                    
+                            if melhor_dist_Move < THRESHOLD_RECONHECIMENTO:
+                                detectando_movimento = True
+                                texto = melhor_sinal
+                                cv2.putText(
+                                    frame,
+                                    f"Sinal: {melhor_sinal}",
+                                    (20, 40),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    1,
+                                    (0, 255, 0),
+                                    2,
+                                )
+                            
+                            if detectando_movimento == True:
+                                continue
+
+                            for sinal in sinais:
+
+                                if sinal.get("tipo") == "sinal" and detectando_movimento == False:
                                     vetor_salvo = sinal.get("vetor", [])
 
                                     if len(vetor_salvo) != 63:
@@ -376,7 +423,7 @@ def generate_frames():
 
                             #logger.info("Melhor distancia: %.4f", melhor_distancia)
 
-                            if melhor_distancia < THRESHOLD_RECONHECIMENTO:
+                            if melhor_distancia < THRESHOLD_RECONHECIMENTO and detectando_movimento == False:
                                 ultimo_reconhecido = melhor_sinal
                                 texto = melhor_sinal
 
@@ -888,6 +935,7 @@ ultimoNomeRegistrado = ""
 
 document.getElementById('status').textContent =
 `modo: ${data.modo}
+detectando_movimento: ${data.detectando_movimento}
 stream_ok: ${data.stream_ok}
 stream_url: ${data.stream_url}
 sinal_em_registro: ${data.nome_sinal_atual || '-'}
@@ -925,6 +973,18 @@ document.getElementById('status').textContent="Falha ao buscar status"
 // ===============================
 // CONTROLES
 // ===============================
+
+async function registrar(){
+const nome = document.getElementById('nomeSinal').value.trim()
+
+if(!nome){
+notificar("Informe o nome do sinal", 'info')
+return
+}
+
+await fetch(`/registrar?nome=${encodeURIComponent(nome)}`)
+
+}
 
 async function registrarMove(){
 
@@ -1004,6 +1064,7 @@ def status():
 def registrar():
     global nome_sinal_atual, tempo_registro
     nome = request.args.get("nome", "").strip()
+    
     if not nome:
         return jsonify({"ok": False, "erro": "Use /registrar?nome=A ou preencha o formulario"}), 400
 

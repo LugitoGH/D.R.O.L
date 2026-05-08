@@ -598,18 +598,6 @@ position:relative;
 text-transform:lowercase;
 }
 
-.brand-mark::after{
-content:"";
-position:absolute;
-left:13px;
-bottom:-11px;
-width:58px;
-height:10px;
-border:8px solid #fff;
-border-top:none;
-border-radius:0 0 18px 18px;
-}
-
 .divider{
 width:4px;
 align-self:stretch;
@@ -751,15 +739,19 @@ transform:translateY(0);
 }
 
 .controls button:nth-of-type(1){
-background:linear-gradient(180deg,#7e17ff,var(--purple));
+background:linear-gradient(180deg,var(--purple),var(--purple));
 }
 
 .controls button:nth-of-type(2){
-background:linear-gradient(180deg,#7d109f,var(--purple-dark));
+background:linear-gradient(180deg,var(--purple-dark),var(--purple-dark));
 }
 
 .controls button:nth-of-type(3){
-background:linear-gradient(180deg, #FFD54F, #FFC107);
+background:linear-gradient(180deg, #FFC107, #FFC107);
+}
+
+.controls button:nth-of-type(4){
+background:linear-gradient(180deg, #006400, #006400);
 }
 
 .controls button.stop{
@@ -855,14 +847,6 @@ font-size:3.6rem;
 letter-spacing:-3px;
 }
 
-.brand-mark::after{
-left:9px;
-width:42px;
-height:8px;
-border-width:6px;
-bottom:-9px;
-}
-
 .panel{
 padding:20px 18px 24px;
 border-radius:30px;
@@ -875,6 +859,10 @@ font-size:1.7rem;
 .controls input,.controls button{
 min-height:68px;
 font-size:1rem;
+}
+
+#btnImp{
+background-color: #006400;
 }
 
 .video-shell,#status{
@@ -899,7 +887,7 @@ max-width:none;
 
 <div class="container">
 <header class="topbar">
-<div class="brand-mark">drol</div>
+<div class="brand-mark"><img src="{{url_for('static', filename='logo.png') }}" alt="Logo" style="width:120px; background-color:#f6f3fb00; height:auto; object-fit:contain;"/></div>
 <div class="divider"></div>
 <h1 class="topbar-title">Dispositivo de Reconhecimento Orientação e Tradução de Libras</h1>
 </header>
@@ -907,7 +895,7 @@ max-width:none;
 <main class="dashboard">
 <section class="panel">
 <h2 class="panel-title">
-<span class="camera-badge" aria-hidden="true"></span>
+<span><img src="{{url_for('static', filename='video_icon.png')}}" alt="Camera Icone" style="width:42px; height:42px; background-color:#ffff0000; object-fit:contain;"/></span>
 <span>Reconhecimento de libras</span>
 </h2>
 
@@ -927,6 +915,8 @@ max-width:none;
 <button onclick="registrar()">Registrar sinal</button>
 
 <button id="btnMove" onclick="registrarMove()">Registrar movimento</button>
+
+<button id="" onclick="">Importar Sinais</button>
 
 <button class="stop" onclick="parar()">Reiniciar</button>
 </div>

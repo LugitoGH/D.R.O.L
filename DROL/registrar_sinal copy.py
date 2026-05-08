@@ -359,6 +359,7 @@ def generate_frames():
                                 movimentos = [movimentos[0], movimentos[len(movimentos)//2], movimentos[-1]]
                                 salvar_sinal("movimento", nome_sinal_atual, movimentos)
                                 set_modo("normal", "registro finalizado")
+                                carregar_sinais()
                                 moveDb = False
 
                         if modo == "reconhecer":
@@ -367,6 +368,7 @@ def generate_frames():
 
                             melhor_distancia = float("inf")
                             melhor_sinal = None
+                            melhor_sinalMove = None
                             melhor_dist_Move = float("inf")
 
                             if detectando_movimento == False:
@@ -384,22 +386,52 @@ def generate_frames():
 
                                         distancia_media = math.sqrt(soma / 63)
 
-                                        if distancia_media < melhor_distancia:
+                                        if distancia_media < melhor_dist_Move:
                                             
                                             melhor_dist_Move = distancia_media
+                                            melhor_sinalMove = sinal["nome"]
+                                            movimento_atual = melhor_sinalMove
+                                
+                                    if sinal.get("tipo") == "sinal" and detectando_movimento == False:
+                                        vetor_salvo = sinal.get("vetor", [])
+
+                                        if len(vetor_salvo) != 63:
+                                            continue
+
+                                        soma = 0
+                                        for i in range(63):
+                                            soma += (vetor_salvo[i] - vetor_atual[i]) ** 2
+
+                                        distancia_media = math.sqrt(soma / 63)
+
+                                        if distancia_media < melhor_distancia:
+                                            melhor_distancia = distancia_media
                                             melhor_sinal = sinal["nome"]
-                                            movimento_atual = melhor_sinal
-                                            sinal_movimento_atual = sinal
                                             
-                                            #texto = melhor_sinal
+                            
 
                                         
                                         
                                 if melhor_dist_Move < THRESHOLD_RECONHECIMENTO:
                                     detectando_movimento = True
+                                    sinal_movimento_atual = sinal
                                     movimentos = []
                                     hand0 = hand
+                                    texto = melhor_sinalMove
+                                    cv2.putText(
+                                        frame,
+                                        f"Sinal: {melhor_sinalMove}",
+                                        (20, 40),
+                                        cv2.FONT_HERSHEY_SIMPLEX,
+                                        1,
+                                        (0, 255, 0),
+                                        2,
+                                    )
+                                
+                                if melhor_distancia < THRESHOLD_RECONHECIMENTO * 1.35 and detectando_movimento == False:
+                                    ultimo_reconhecido = melhor_sinal
                                     texto = melhor_sinal
+
                                     cv2.putText(
                                         frame,
                                         f"Sinal: {melhor_sinal}",
@@ -414,34 +446,35 @@ def generate_frames():
                                 
                                 
                                 vetor_atual = normalizar_e_vetorizar(hand, hand0[0])
-                                
+
                                 sinal = sinal_movimento_atual
-                                
-                                
+
                                 if sinal is None:
-                                    continue
-
-                                
-    
-
-                                vetor_salvo = sinal["vetor"][-1]
-                                    
-                                if len(vetor_salvo) != 63:
-                                    continue
-                                    
-                                soma = 0
-                                for i in range(63):
-                                    soma += (vetor_salvo[i] - vetor_atual[i]) ** 2
-
-                                distancia_media = math.sqrt(soma / 63)
-
-                                if len(movimentos) > 4000:
                                     detectando_movimento = False
-                                    print(len(movimentos))
-                                    
+                                    continue
+
+                                vetor_inicio = sinal["vetor"][0]
+                                vetor_meio = sinal["vetor"][1]
+                                vetor_fim = sinal["vetor"][2]
+
+                                if len(vetor_fim) != 63:
+                                    detectando_movimento = False
+                                    continue
+
+
+                                def dist(v1, v2):
+                                    soma = 0
+                                    for i in range(63):
+                                        soma += (v1[i] - v2[i]) ** 2
+                                    return math.sqrt(soma / 63)
+
+
+                                dist_inicio = dist(vetor_atual, vetor_inicio)
+                                dist_fim = dist(vetor_atual, vetor_fim)
+
                                 cv2.putText(
                                     frame,
-                                    f"Detectando Movimento",
+                                    "Detectando Movimento",
                                     (20, 40),
                                     cv2.FONT_HERSHEY_SIMPLEX,
                                     1,
@@ -449,61 +482,36 @@ def generate_frames():
                                     2,
                                 )
 
-                                print(len(movimentos))
+                                if dist_inicio > 0.6 and dist_fim > 0.6:
+                                    detectando_movimento = False
+                                    movimentos = []
+                                    movimento_atual = None
+                                    sinal_movimento_atual = None
+                                    continue
 
-                                if distancia_media < THRESHOLD_RECONHECIMENTO and detectando_movimento == True:
+                                if dist_fim < THRESHOLD_RECONHECIMENTO * 1.7:
                                     detectando_movimento = False
                                     texto = movimento_atual
                                     texto_exibido = texto
                                     texto_att = time.time() + 2
 
-                                    
-                                    
+                                    movimentos = []
+                                    movimento_atual = None
+                                    sinal_movimento_atual = None
+
                                 else:
-                                
-                                    if len(movimentos) > 4000:
-                                        detectando_movimento = False
-                                        
-                                        
-                                    
-                                    
                                     movimentos.append(vetor_atual)
 
+                                    if len(movimentos) > 4000:
+                                        detectando_movimento = False
+                                        movimentos = []
+                                        movimento_atual = None
+                                        sinal_movimento_atual = None
 
 
-                            for sinal in sinais:
-
-                                if sinal.get("tipo") == "sinal" and detectando_movimento == False:
-                                    vetor_salvo = sinal.get("vetor", [])
-
-                                    if len(vetor_salvo) != 63:
-                                        continue
-
-                                    soma = 0
-                                    for i in range(63):
-                                        soma += (vetor_salvo[i] - vetor_atual[i]) ** 2
-
-                                    distancia_media = math.sqrt(soma / 63)
-
-                                    if distancia_media < melhor_distancia:
-                                        melhor_distancia = distancia_media
-                                        melhor_sinal = sinal["nome"]
 
                             #logger.info("Melhor distancia: %.4f", melhor_distancia)
 
-                            if melhor_distancia < THRESHOLD_RECONHECIMENTO and detectando_movimento == False:
-                                ultimo_reconhecido = melhor_sinal
-                                texto = melhor_sinal
-
-                                cv2.putText(
-                                    frame,
-                                    f"Sinal: {melhor_sinal}",
-                                    (20, 40),
-                                    cv2.FONT_HERSHEY_SIMPLEX,
-                                    1,
-                                    (0, 255, 0),
-                                    2,
-                                )
             else:
                 ultimo_reconhecido = ""
 

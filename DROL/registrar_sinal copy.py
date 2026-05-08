@@ -579,6 +579,14 @@ body{
 margin:0;
 font-family:"Trebuchet MS","Century Gothic",Verdana,sans-serif;
 background:linear-gradient(90deg,var(--bg-start),var(--bg-end));
+
+background-image:
+linear-gradient(#36075edb, rgb(52 0 96 / 81%)), url(/static/background.png);
+
+background-opacity: 50%;
+background-size:cover;
+background-position:center;
+background-repeat:no-repeat;
 color:var(--text);
 min-height:100vh;
 }
@@ -636,6 +644,7 @@ background:var(--card);
 border-radius:var(--radius-xl);
 padding:28px 30px 34px;
 box-shadow:var(--shadow);
+height:fit-content;
 }
 
 .panel-title{
@@ -677,6 +686,92 @@ overflow:hidden;
 background:#f6f3fb;
 min-height:520px;
 display:flex;
+}
+
+.language-panel{
+margin-top:24px;
+display:grid;
+gap:22px;
+}
+
+.language-label{
+font-size:1.05rem;
+font-weight:900;
+color:#241034;
+}
+
+.language-select-wrap{
+position:relative;
+}
+
+.language-select-wrap::after{
+content:"";
+position:absolute;
+right:24px;
+top:50%;
+width:10px;
+height:10px;
+border-right:3px solid #fff;
+border-bottom:3px solid #fff;
+transform:translateY(-65%) rotate(45deg);
+pointer-events:none;
+}
+
+.language-select{
+width:100%;
+min-height:64px;
+padding:16px 58px 16px 22px;
+border:none;
+border-radius:18px;
+background:linear-gradient(180deg,var(--purple-dark),#51106b);
+color:#fff;
+font-family:inherit;
+font-size:1.05rem;
+font-weight:900;
+appearance:none;
+outline:none;
+box-shadow:0 12px 24px rgba(82, 0, 145, 0.18);
+cursor:pointer;
+}
+
+.language-select option{
+background:#2d3540;
+color:#fff;
+font-weight:800;
+}
+
+.custom-sign-actions{
+display:grid;
+grid-template-columns:repeat(3,minmax(0,1fr));
+gap:22px;
+}
+
+.custom-sign-actions.is-hidden{
+display:none;
+}
+
+.custom-sign-actions button{
+min-height:58px;
+padding:14px 18px;
+border:none;
+border-radius:18px;
+background: #6a098f;
+color:#fff;
+font-family:inherit;
+font-size:1rem;
+font-weight:900;
+box-shadow:0 12px 24px rgba(82, 0, 145, 0.18);
+cursor:pointer;
+transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
+}
+
+.custom-sign-actions button:hover{
+transform:translateY(-2px);
+filter:brightness(1.02);
+}
+
+.custom-sign-actions button:active{
+transform:translateY(0);
 }
 
 img{
@@ -839,11 +934,6 @@ display:none;
 font-size:1.45rem;
 }
 
-.dashboard{
-grid-template-columns:1fr;
-padding:30px 18px 28px;
-}
-
 .video-shell{
 min-height:400px;
 }
@@ -858,6 +948,7 @@ letter-spacing:-3px;
 .panel{
 padding:20px 18px 24px;
 border-radius:30px;
+height:fit-content;
 }
 
 .panel-title,.sidebar-title{
@@ -875,6 +966,15 @@ background-color: #006400;
 
 .video-shell,#status{
 border-radius:28px;
+}
+
+.language-select{
+min-height:58px;
+font-size:1rem;
+}
+
+.custom-sign-actions{
+grid-template-columns:1fr;
 }
 
 .toast-container{
@@ -910,6 +1010,25 @@ max-width:none;
 <div class="video-shell">
 <img src="/video_feed" alt="Transmissao da camera do DROL">
 </div>
+
+<div class="language-panel">
+<label class="language-label" for="signLanguage">Linguagem de sinais</label>
+<div class="language-select-wrap">
+<select id="signLanguage" class="language-select" aria-label="Selecionar linguagem de sinais">
+<option value="personalizado" selected>Personalizado</option>
+<option value="libras">LIBRAS</option>
+<option value="asl">ASL</option>
+<option value="bsl">BSL</option>
+<option value="lsf">LSF</option>
+</select>
+</div>
+
+<div id="customSignActions" class="custom-sign-actions">
+<button type="button">Importar Sinais</button>
+<button type="button">Exportar Sinais</button>
+<button type="button">Limpar Sinais</button>
+</div>
+</div>
 </section>
 
 <aside class="panel sidebar">
@@ -923,8 +1042,6 @@ max-width:none;
 <button onclick="registrar()">Registrar sinal</button>
 
 <button id="btnMove" onclick="registrarMove()">Registrar movimento</button>
-
-<button id="" onclick="">Importar Sinais</button>
 
 <button class="stop" onclick="parar()">Reiniciar</button>
 </div>
@@ -946,6 +1063,17 @@ let ultimoTempo = 0
 let ultimoReconhecidoNotificado = ""
 let ultimoStatus = null
 let ultimoNomeRegistrado = ""
+
+function atualizarControlesLinguagem(){
+
+const select = document.getElementById('signLanguage')
+const actions = document.getElementById('customSignActions')
+
+if(!select || !actions) return
+
+actions.classList.toggle('is-hidden', select.value !== 'personalizado')
+
+}
 
 function falar(texto){
 
@@ -1106,6 +1234,8 @@ atualizarStatus()
 
 // ===============================
 
+document.getElementById('signLanguage').addEventListener('change', atualizarControlesLinguagem)
+atualizarControlesLinguagem()
 atualizarStatus()
 
 setInterval(atualizarStatus,1000)

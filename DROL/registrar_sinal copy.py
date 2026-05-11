@@ -29,6 +29,8 @@ MAX_SINAIS_IMPORTADOS = 1000
 MAX_FRAMES_MOVIMENTO = 300
 VETOR_SINAL_TAMANHO = 63
 TIPOS_SINAIS_PERMITIDOS = {"sinal", "movimento"}
+CONCATENADO_TIMEOUT = 3.0
+CONCATENADO_INTERVALO_SINAL = 1.6
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -146,6 +148,12 @@ sinais = []
 stream_url_ativo = ""
 falhas_stream = 0
 cap = None
+texto_concatenado = ""
+concatenado_finalizado = ""
+concatenado_finalizado_id = 0
+ultimo_sinal_concatenado = ""
+ultimo_tempo_sinal_concatenado = 0.0
+ultimo_tempo_reconhecimento_concatenado = 0.0
 
 
 
@@ -282,6 +290,27 @@ def validar_sinais_importados(sinais_importados):
     ]
 
 
+def vetor_tem_formato_valido(vetor):
+    return (
+        isinstance(vetor, list)
+        and len(vetor) == VETOR_SINAL_TAMANHO
+        and all(
+            isinstance(valor, (int, float))
+            and not isinstance(valor, bool)
+            and math.isfinite(valor)
+            for valor in vetor
+        )
+    )
+
+
+def movimento_tem_formato_valido(vetor_movimento):
+    return (
+        isinstance(vetor_movimento, list)
+        and len(vetor_movimento) >= 3
+        and all(vetor_tem_formato_valido(frame) for frame in vetor_movimento[:3])
+    )
+
+
 def substituir_sinais(sinais_importados):
     with open(SINAIS_PATH, "w", encoding="utf-8") as f:
         for sinal in sinais_importados:
@@ -346,6 +375,10 @@ def status_dict():
         "detectando_movimento": detectando_movimento,
         "nome_sinal_atual": nome_sinal_atual,
         "ultimo_reconhecido": ultimo_reconhecido,
+        "texto_concatenado": texto_concatenado,
+        "concatenado_ativo": modo == "concatenado",
+        "concatenado_finalizado": concatenado_finalizado,
+        "concatenado_finalizado_id": concatenado_finalizado_id,
         "stream_url": stream_url_ativo,
         "stream_ok": cap is not None and cap.isOpened(),
         "total_sinais": len(sinais),
@@ -367,6 +400,54 @@ def frame_aguardando_stream():
     return frame
 
 
+def iniciar_concatenado():
+    global texto_concatenado, concatenado_finalizado, ultimo_sinal_concatenado
+    global ultimo_tempo_sinal_concatenado, ultimo_tempo_reconhecimento_concatenado
+
+    texto_concatenado = ""
+    concatenado_finalizado = ""
+    ultimo_sinal_concatenado = ""
+    ultimo_tempo_sinal_concatenado = 0.0
+    ultimo_tempo_reconhecimento_concatenado = time.time()
+    set_modo("concatenado", "concatenacao solicitada via rota")
+
+
+def registrar_sinal_concatenado(nome_sinal):
+    global texto_concatenado, ultimo_sinal_concatenado
+    global ultimo_tempo_sinal_concatenado, ultimo_tempo_reconhecimento_concatenado
+
+    if modo != "concatenado" or not nome_sinal:
+        return
+
+    agora = time.time()
+    ultimo_tempo_reconhecimento_concatenado = agora
+
+    if (
+        nome_sinal == ultimo_sinal_concatenado
+        and agora - ultimo_tempo_sinal_concatenado < CONCATENADO_INTERVALO_SINAL
+    ):
+        return
+
+    texto_concatenado += str(nome_sinal)
+    ultimo_sinal_concatenado = nome_sinal
+    ultimo_tempo_sinal_concatenado = agora
+
+
+def verificar_timeout_concatenado():
+    global concatenado_finalizado, concatenado_finalizado_id, ultimo_sinal_concatenado
+
+    if modo != "concatenado":
+        return
+
+    if time.time() - ultimo_tempo_reconhecimento_concatenado < CONCATENADO_TIMEOUT:
+        return
+
+    concatenado_finalizado = texto_concatenado
+    concatenado_finalizado_id += 1
+    ultimo_sinal_concatenado = ""
+    set_modo("normal", "concatenacao finalizada por ausencia de sinal")
+
+
 carregar_sinais()
 cap, stream_url_ativo = abrir_stream_camera()
 
@@ -383,6 +464,8 @@ def generate_frames():
     while True:
         frame = None
         try:
+            verificar_timeout_concatenado()
+
             if cap is None or not cap.isOpened():
                 falhas_stream += 1
                 if falhas_stream == 1 or falhas_stream % 60 == 0:
@@ -475,23 +558,26 @@ def generate_frames():
                                 carregar_sinais()
                                 moveDb = False
 
-                        if modo == "reconhecer":
+                        if modo in ("reconhecer", "concatenado"):
 
                             vetor_atual = normalizar_e_vetorizar(hand, hand[0])
 
                             melhor_distancia = float("inf")
                             melhor_sinal = None
                             melhor_sinalMove = None
+                            melhor_sinalMove_dados = None
                             melhor_dist_Move = float("inf")
 
                             if detectando_movimento == False:
 
                                 for sinal in sinais:
                                     if (sinal.get("tipo") == "movimento"):
-                                        vetor_salvo = sinal["vetor"][0]
+                                        vetor_movimento = sinal.get("vetor", [])
                                         
-                                        if len(vetor_salvo) != 63:
+                                        if not movimento_tem_formato_valido(vetor_movimento):
                                             continue
+
+                                        vetor_salvo = vetor_movimento[0]
                                         
                                         soma = 0
                                         for i in range(63):
@@ -503,31 +589,18 @@ def generate_frames():
                                             
                                             melhor_dist_Move = distancia_media
                                             melhor_sinalMove = sinal["nome"]
+                                            melhor_sinalMove_dados = sinal
                                             movimento_atual = melhor_sinalMove
                                 
-                                    if sinal.get("tipo") == "sinal" and detectando_movimento == False:
-                                        vetor_salvo = sinal.get("vetor", [])
 
-                                        if len(vetor_salvo) != 63:
-                                            continue
-
-                                        soma = 0
-                                        for i in range(63):
-                                            soma += (vetor_salvo[i] - vetor_atual[i]) ** 2
-
-                                        distancia_media = math.sqrt(soma / 63)
-
-                                        if distancia_media < melhor_distancia:
-                                            melhor_distancia = distancia_media
-                                            melhor_sinal = sinal["nome"]
                                             
                             
 
                                         
                                         
-                                if melhor_dist_Move < THRESHOLD_RECONHECIMENTO:
+                                if melhor_dist_Move < THRESHOLD_RECONHECIMENTO and melhor_sinalMove_dados is not None:
                                     detectando_movimento = True
-                                    sinal_movimento_atual = sinal
+                                    sinal_movimento_atual = melhor_sinalMove_dados
                                     movimentos = []
                                     hand0 = hand
                                     texto = melhor_sinalMove
@@ -540,20 +613,40 @@ def generate_frames():
                                         (0, 255, 0),
                                         2,
                                     )
-                                
-                                if melhor_distancia < THRESHOLD_RECONHECIMENTO * 1.35 and detectando_movimento == False:
-                                    ultimo_reconhecido = melhor_sinal
-                                    texto = melhor_sinal
+                            
+                            if detectando_movimento == False:
+                                for sinal in sinais:
 
-                                    cv2.putText(
-                                        frame,
-                                        f"Sinal: {melhor_sinal}",
-                                        (20, 40),
-                                        cv2.FONT_HERSHEY_SIMPLEX,
-                                        1,
-                                        (0, 255, 0),
-                                        2,
-                                    )
+                                    if sinal.get("tipo") == "sinal" and detectando_movimento == False:
+                                            vetor_salvo = sinal.get("vetor", [])
+
+                                            if not vetor_tem_formato_valido(vetor_salvo):
+                                                continue
+
+                                            soma = 0
+                                            for i in range(63):
+                                                soma += (vetor_salvo[i] - vetor_atual[i]) ** 2
+
+                                            distancia_media = math.sqrt(soma / 63)
+
+                                            if distancia_media < melhor_distancia:
+                                                melhor_distancia = distancia_media
+                                                melhor_sinal = sinal["nome"]
+                                    
+                                    if melhor_distancia < THRESHOLD_RECONHECIMENTO * 1.35 and detectando_movimento == False:
+                                        ultimo_reconhecido = melhor_sinal
+                                        registrar_sinal_concatenado(melhor_sinal)
+                                        texto = melhor_sinal
+
+                                        cv2.putText(
+                                            frame,
+                                            f"Sinal: {melhor_sinal}",
+                                            (20, 40),
+                                            cv2.FONT_HERSHEY_SIMPLEX,
+                                            1,
+                                            (0, 255, 0),
+                                            2,
+                                        )
                             
                             if detectando_movimento == True:
                                 
@@ -566,13 +659,18 @@ def generate_frames():
                                     detectando_movimento = False
                                     continue
 
-                                vetor_inicio = sinal["vetor"][0]
-                                vetor_meio = sinal["vetor"][1]
-                                vetor_fim = sinal["vetor"][2]
+                                vetor_movimento = sinal.get("vetor", [])
 
-                                if len(vetor_fim) != 63:
+                                if not movimento_tem_formato_valido(vetor_movimento):
                                     detectando_movimento = False
+                                    movimentos = []
+                                    movimento_atual = None
+                                    sinal_movimento_atual = None
                                     continue
+
+                                vetor_inicio = vetor_movimento[0]
+                                vetor_meio = vetor_movimento[1]
+                                vetor_fim = vetor_movimento[2]
 
 
                                 def dist(v1, v2):
@@ -605,6 +703,8 @@ def generate_frames():
                                 if dist_fim < THRESHOLD_RECONHECIMENTO * 1.7:
                                     detectando_movimento = False
                                     texto = movimento_atual
+                                    ultimo_reconhecido = movimento_atual
+                                    registrar_sinal_concatenado(movimento_atual)
                                     texto_exibido = texto
                                     texto_att = time.time() + 2
 
@@ -627,6 +727,7 @@ def generate_frames():
 
             else:
                 ultimo_reconhecido = ""
+                verificar_timeout_concatenado()
 
             cv2.putText(
                 frame,
@@ -963,11 +1064,11 @@ background:linear-gradient(180deg,var(--purple-dark),var(--purple-dark));
 }
 
 .controls button:nth-of-type(3){
-background:linear-gradient(180deg, #FFC107, #FFC107);
+background:linear-gradient(180deg,var(--purple-dark),var(--purple-dark));
 }
 
 .controls button:nth-of-type(4){
-background:linear-gradient(180deg, #006400, #006400);
+background:linear-gradient(180deg, #FFC107, #FFC107);
 }
 
 .controls button.stop{
@@ -1153,6 +1254,8 @@ max-width:none;
 
 <button onclick="reconhecer()">Reconhecer sinal</button>
 
+<button onclick="concatenado()">Palavra</button>
+
 <button onclick="registrar()">Registrar sinal</button>
 
 <button id="btnMove" onclick="registrarMove()">Registrar movimento</button>
@@ -1177,6 +1280,7 @@ let ultimoTempo = 0
 let ultimoReconhecidoNotificado = ""
 let ultimoStatus = null
 let ultimoNomeRegistrado = ""
+let ultimoConcatenadoFinalizadoId = 0
 
 function atualizarControlesLinguagem(){
 
@@ -1259,13 +1363,28 @@ stream_ok: ${data.stream_ok}
 stream_url: ${data.stream_url}
 sinal_em_registro: ${data.nome_sinal_atual || '-'}
 ultimo_reconhecido: ${data.ultimo_reconhecido || '-'}
+concatenado: ${data.texto_concatenado || '-'}
 total_sinais: ${data.total_sinais}
 threshold: ${data.threshold}`
 
 
+const concatenadoFinalizadoAgora =
+data.concatenado_finalizado_id &&
+data.concatenado_finalizado_id !== ultimoConcatenadoFinalizadoId
+
+if(concatenadoFinalizadoAgora){
+ultimoConcatenadoFinalizadoId = data.concatenado_finalizado_id
+
+if(data.concatenado_finalizado){
+notificar(`Concatenado: ${data.concatenado_finalizado}`, 'success')
+ultimoReconhecidoNotificado = data.ultimo_reconhecido || ""
+falar(data.concatenado_finalizado)
+}
+}
+
 // 🔊 SE RECONHECER SINAL NOVO, FALAR
 
-if(data.ultimo_reconhecido){
+if(data.ultimo_reconhecido && !data.concatenado_ativo && !concatenadoFinalizadoAgora){
 
 if(data.ultimo_reconhecido !== ultimoReconhecidoNotificado){
 notificar(`Sinal reconhecido: ${data.ultimo_reconhecido}`, 'info')
@@ -1275,7 +1394,7 @@ ultimoReconhecidoNotificado = data.ultimo_reconhecido
 falar(data.ultimo_reconhecido)
 
 }
-else{
+else if(!concatenadoFinalizadoAgora){
 ultimoReconhecidoNotificado = ""
 }
 
@@ -1334,6 +1453,15 @@ async function reconhecer(){
 
 await fetch('/reconhecer')
 
+atualizarStatus()
+
+}
+
+async function concatenado(){
+
+await fetch('/concatenado')
+
+ultimoReconhecidoNotificado = ""
 atualizarStatus()
 
 }
@@ -1551,6 +1679,12 @@ def reconhecer():
     return jsonify({"ok": True, "mensagem": "Modo reconhecimento ativado"})
 
 
+@app.route("/concatenado")
+def concatenado():
+    iniciar_concatenado()
+    return jsonify({"ok": True, "mensagem": "Modo concatenado ativado"})
+
+
 @app.route("/parar")
 def parar():
     set_modo("normal", "parada solicitada via rota")
@@ -1560,7 +1694,7 @@ def parar():
 def log_instrucoes_iniciais():
     logger.info("Servidor Flask iniciado em 0.0.0.0:5000")
     logger.info("Painel unificado: http://<IP_DO_HOST>:5000/")
-    logger.info("Rotas: /registrar?nome=X | /reconhecer | /parar | /status | /video_feed")
+    logger.info("Rotas: /registrar?nome=X | /reconhecer | /concatenado | /parar | /status | /video_feed")
     logger.info(
         "Config stream: CAMERA_STREAM_URL ou CAMERA_SERVER_HOST/CAMERA_SERVER_PORT/CAMERA_STREAM_PATH (Docker-friendly)."
     )

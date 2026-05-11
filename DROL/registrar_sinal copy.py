@@ -7,7 +7,7 @@ import math
 import logging
 import socket
 import numpy as np
-from flask import Flask, Response, jsonify, render_template_string, request
+from flask import Flask, Response, jsonify, render_template_string, request, send_file
 from gtts import gTTS
 
 # ================== LOG CONFIG ==================
@@ -24,6 +24,11 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 SINAIS_PATH = os.path.join(DATA_DIR, "sinais.json")
 THRESHOLD_RECONHECIMENTO = float(os.getenv("DROL_RECOGNITION_THRESHOLD", "0.15"))
 REGISTRO_SEGUNDOS = int(os.getenv("DROL_REGISTRATION_SECONDS", "5"))
+MAX_IMPORT_BYTES = 2 * 1024 * 1024
+MAX_SINAIS_IMPORTADOS = 1000
+MAX_FRAMES_MOVIMENTO = 300
+VETOR_SINAL_TAMANHO = 63
+TIPOS_SINAIS_PERMITIDOS = {"sinal", "movimento"}
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -176,6 +181,114 @@ def salvar_sinal(tipo, nome, vetor):
         logger.info("Sinal '%s' salvo com sucesso.", nome)
     except Exception as e:
         logger.error("Erro ao salvar sinal '%s': %s", nome, e)
+
+
+def normalizar_conteudo_sinais(conteudo):
+    if len(conteudo) > MAX_IMPORT_BYTES:
+        raise ValueError("Arquivo muito grande. Limite: 2 MB.")
+
+    texto = conteudo.decode("utf-8-sig").strip()
+    if not texto:
+        return []
+
+    try:
+        dados = json.loads(texto)
+        if isinstance(dados, dict):
+            dados = [dados]
+        if not isinstance(dados, list):
+            raise ValueError("O JSON deve conter um objeto, uma lista ou linhas JSON.")
+        return dados
+    except json.JSONDecodeError:
+        sinais_importados = []
+        for numero_linha, linha in enumerate(texto.splitlines(), start=1):
+            linha = linha.strip()
+            if not linha:
+                continue
+            try:
+                sinais_importados.append(json.loads(linha))
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"JSON invalido na linha {numero_linha}.") from exc
+        return sinais_importados
+
+
+def validar_nome_sinal(nome, indice):
+    if not isinstance(nome, str):
+        raise ValueError(f"Sinal {indice}: o campo 'nome' deve ser texto.")
+
+    nome = nome.strip()
+    if not nome:
+        raise ValueError(f"Sinal {indice}: o campo 'nome' nao pode ficar vazio.")
+
+    if len(nome) > 80:
+        raise ValueError(f"Sinal {indice}: o campo 'nome' deve ter ate 80 caracteres.")
+
+    if any(ord(char) < 32 for char in nome):
+        raise ValueError(f"Sinal {indice}: o campo 'nome' contem caracteres invalidos.")
+
+    return nome
+
+
+def validar_vetor_numerico(vetor, indice, contexto):
+    if not isinstance(vetor, list) or len(vetor) != VETOR_SINAL_TAMANHO:
+        raise ValueError(f"Sinal {indice}: {contexto} deve ter {VETOR_SINAL_TAMANHO} numeros.")
+
+    vetor_validado = []
+    for posicao, valor in enumerate(vetor, start=1):
+        if not isinstance(valor, (int, float)) or isinstance(valor, bool) or not math.isfinite(valor):
+            raise ValueError(f"Sinal {indice}: valor invalido em {contexto}[{posicao}].")
+        vetor_validado.append(float(valor))
+
+    return vetor_validado
+
+
+def validar_sinal_importado(sinal, indice):
+    if not isinstance(sinal, dict):
+        raise ValueError(f"Sinal {indice}: cada item deve ser um objeto JSON.")
+
+    campos = set(sinal.keys())
+    campos_esperados = {"tipo", "nome", "vetor"}
+    if campos != campos_esperados:
+        raise ValueError(f"Sinal {indice}: use apenas os campos tipo, nome e vetor.")
+
+    tipo = sinal["tipo"]
+    if tipo not in TIPOS_SINAIS_PERMITIDOS:
+        raise ValueError(f"Sinal {indice}: tipo deve ser 'sinal' ou 'movimento'.")
+
+    nome = validar_nome_sinal(sinal["nome"], indice)
+    vetor = sinal["vetor"]
+
+    if tipo == "sinal":
+        vetor_validado = validar_vetor_numerico(vetor, indice, "vetor")
+    else:
+        if not isinstance(vetor, list) or not vetor:
+            raise ValueError(f"Sinal {indice}: movimento deve ter uma lista de frames.")
+        if len(vetor) > MAX_FRAMES_MOVIMENTO:
+            raise ValueError(f"Sinal {indice}: movimento deve ter ate {MAX_FRAMES_MOVIMENTO} frames.")
+        vetor_validado = [
+            validar_vetor_numerico(frame, indice, f"vetor[{frame_indice}]")
+            for frame_indice, frame in enumerate(vetor, start=1)
+        ]
+
+    return {"tipo": tipo, "nome": nome, "vetor": vetor_validado}
+
+
+def validar_sinais_importados(sinais_importados):
+    if len(sinais_importados) > MAX_SINAIS_IMPORTADOS:
+        raise ValueError(f"Importacao limitada a {MAX_SINAIS_IMPORTADOS} sinais por arquivo.")
+
+    return [
+        validar_sinal_importado(sinal, indice)
+        for indice, sinal in enumerate(sinais_importados, start=1)
+    ]
+
+
+def substituir_sinais(sinais_importados):
+    with open(SINAIS_PATH, "w", encoding="utf-8") as f:
+        for sinal in sinais_importados:
+            json.dump(sinal, f, ensure_ascii=False)
+            f.write("\n")
+    carregar_sinais()
+
 
 def normalizar_e_vetorizar(hand_landmarks, centralpoint):
     """
@@ -1024,10 +1137,11 @@ max-width:none;
 </div>
 
 <div id="customSignActions" class="custom-sign-actions">
-<button type="button">Importar Sinais</button>
-<button type="button">Exportar Sinais</button>
-<button type="button">Limpar Sinais</button>
+<button type="button" onclick="abrirImportacaoSinais()">Importar Sinais</button>
+<button type="button" onclick="exportarSinais()">Exportar Sinais</button>
+<button type="button" onclick="limparSinais()">Limpar Sinais</button>
 </div>
+<input id="arquivoSinais" type="file" accept=".json,application/json" hidden>
 </div>
 </section>
 
@@ -1232,9 +1346,80 @@ atualizarStatus()
 
 }
 
+function abrirImportacaoSinais(){
+
+const input = document.getElementById('arquivoSinais')
+input.value = ""
+input.click()
+
+}
+
+async function importarSinais(event){
+
+const arquivo = event.target.files[0]
+
+if(!arquivo) return
+
+if(!arquivo.name.toLowerCase().endsWith('.json')){
+notificar("Selecione um arquivo .json", 'info')
+return
+}
+
+const formData = new FormData()
+formData.append('arquivo', arquivo)
+
+try{
+const res = await fetch('/importar_sinais', {
+method: 'POST',
+body: formData
+})
+const data = await res.json()
+
+if(!res.ok || !data.ok){
+notificar(data.erro || "Falha ao importar sinais", 'danger')
+return
+}
+
+notificar(data.mensagem, 'success')
+atualizarStatus()
+}catch(e){
+notificar("Falha ao importar sinais", 'danger')
+}
+
+}
+
+function exportarSinais(){
+
+window.location.href = '/exportar_sinais'
+
+}
+
+async function limparSinais(){
+
+if(!confirm("Deseja apagar todos os sinais salvos?")) return
+
+try{
+const res = await fetch('/limpar_sinais', {method: 'POST'})
+const data = await res.json()
+
+if(!res.ok || !data.ok){
+notificar(data.erro || "Falha ao limpar sinais", 'danger')
+return
+}
+
+notificar(data.mensagem, 'success')
+ultimoReconhecidoNotificado = ""
+atualizarStatus()
+}catch(e){
+notificar("Falha ao limpar sinais", 'danger')
+}
+
+}
+
 // ===============================
 
 document.getElementById('signLanguage').addEventListener('change', atualizarControlesLinguagem)
+document.getElementById('arquivoSinais').addEventListener('change', importarSinais)
 atualizarControlesLinguagem()
 atualizarStatus()
 
@@ -1265,6 +1450,58 @@ def video_compat():
 @app.route("/status")
 def status():
     return jsonify(status_dict())
+
+
+@app.route("/importar_sinais", methods=["POST"])
+def importar_sinais():
+    arquivo = request.files.get("arquivo")
+
+    if not arquivo or not arquivo.filename:
+        return jsonify({"ok": False, "erro": "Envie um arquivo .json."}), 400
+
+    if not arquivo.filename.lower().endswith(".json"):
+        return jsonify({"ok": False, "erro": "O arquivo deve ser do tipo .json."}), 400
+
+    try:
+        sinais_importados = validar_sinais_importados(normalizar_conteudo_sinais(arquivo.read()))
+        substituir_sinais(sinais_importados)
+        logger.info("%d sinais importados para %s.", len(sinais_importados), SINAIS_PATH)
+        return jsonify({"ok": True, "mensagem": f"{len(sinais_importados)} sinais importados com sucesso."})
+    except UnicodeDecodeError:
+        return jsonify({"ok": False, "erro": "O arquivo precisa estar em UTF-8."}), 400
+    except ValueError as e:
+        return jsonify({"ok": False, "erro": str(e)}), 400
+    except Exception as e:
+        logger.error("Erro ao importar sinais: %s", e)
+        return jsonify({"ok": False, "erro": "Erro interno ao importar sinais."}), 500
+
+
+@app.route("/exportar_sinais")
+def exportar_sinais():
+    if not os.path.exists(SINAIS_PATH):
+        open(SINAIS_PATH, "a", encoding="utf-8").close()
+
+    return send_file(
+        SINAIS_PATH,
+        mimetype="application/json",
+        as_attachment=True,
+        download_name="sinais.json",
+    )
+
+
+@app.route("/limpar_sinais", methods=["POST"])
+def limpar_sinais():
+    global ultimo_reconhecido
+
+    try:
+        open(SINAIS_PATH, "w", encoding="utf-8").close()
+        carregar_sinais()
+        ultimo_reconhecido = ""
+        logger.info("Arquivo de sinais limpo: %s", SINAIS_PATH)
+        return jsonify({"ok": True, "mensagem": "Sinais apagados com sucesso."})
+    except Exception as e:
+        logger.error("Erro ao limpar sinais: %s", e)
+        return jsonify({"ok": False, "erro": "Erro interno ao limpar sinais."}), 500
 
 
 @app.route("/registrar")
